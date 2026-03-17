@@ -8,123 +8,162 @@ start:
     mov ss, ax
     mov sp, 0x7C00
 
-    ; Clear screen with blue background
-    mov ax, 0x0600
-    mov bh, 0x1F      ; white text on blue background
-    mov cx, 0x0000
-    mov dx, 0x184F
+    ; Set VGA 320x200 256-color mode
+    mov ax, 0x0013
     int 0x10
 
-    ; Set cursor to top left
-    mov ah, 0x02
-    mov bh, 0x00
-    mov dx, 0x0000
-    int 0x10
+    ; Switch to protected mode
+    cli
+    lgdt [gdt_descriptor]
+    mov eax, cr0
+    or eax, 1
+    mov cr0, eax
+    jmp 0x08:pm_start
 
-    ; Print title bar
-    mov si, title
-    mov bl, 0x1F      ; white on blue
-    call print_colored
+[BITS 32]
+pm_start:
+    mov ax, 0x10
+    mov ds, ax
+    mov es, ax
+    mov fs, ax
+    mov gs, ax
+    mov ss, ax
+    mov esp, 0x90000
 
-    ; Move cursor to row 2
-    mov ah, 0x02
-    mov bh, 0x00
-    mov dx, 0x0200
-    int 0x10
+    ; Fill screen dark blue/black
+    mov edi, 0xA0000
+    mov ecx, 320*200
+    mov al, 1
+    rep stosb
 
-    ; Print welcome message
-    mov si, welcome
-    mov bl, 0x1B      ; cyan on blue
-    call print_colored
+    ; Draw stars
+    mov byte [0xA0000 + 10*320 + 45],  15
+    mov byte [0xA0000 + 15*320 + 120], 15
+    mov byte [0xA0000 + 8*320  + 200], 15
+    mov byte [0xA0000 + 20*320 + 280], 15
+    mov byte [0xA0000 + 5*320  + 310], 15
+    mov byte [0xA0000 + 25*320 + 80],  15
+    mov byte [0xA0000 + 12*320 + 250], 15
+    mov byte [0xA0000 + 30*320 + 160], 15
+    mov byte [0xA0000 + 35*320 + 300], 15
+    mov byte [0xA0000 + 3*320  + 170], 15
+    mov byte [0xA0000 + 40*320 + 60],  15
+    mov byte [0xA0000 + 18*320 + 290], 15
 
-    ; Move cursor to row 4
-    mov ah, 0x02
-    mov bh, 0x00
-    mov dx, 0x0400
-    int 0x10
+    ; Draw Saturn body (orange circle)
+    mov ecx, -15
+.py:
+    cmp ecx, 16
+    jge .ring
+    mov edx, -15
+.px:
+    cmp edx, 16
+    jge .npy
+    mov eax, edx
+    imul eax, edx
+    mov ebx, ecx
+    imul ebx, ebx
+    add eax, ebx
+    cmp eax, 225
+    jg .sp
+    mov eax, ecx
+    add eax, 90
+    imul eax, 320
+    mov ebx, edx
+    add ebx, 160
+    add eax, ebx
+    add eax, 0xA0000
+    mov byte [eax], 6
+.sp:
+    inc edx
+    jmp .px
+.npy:
+    inc ecx
+    jmp .py
 
-    mov si, version
-    mov bl, 0x1A      ; green on blue
-    call print_colored
+    ; Draw Saturn ring
+.ring:
+    mov ecx, -4
+.ry:
+    cmp ecx, 5
+    jge .taskbar
+    mov edx, -30
+.rx:
+    cmp edx, 31
+    jge .nry
+    mov eax, edx
+    imul eax, edx
+    mov ebx, 25
+    imul eax, ebx
+    mov ebx, ecx
+    imul ebx, ebx
+    mov esi, 784
+    imul ebx, esi
+    add eax, ebx
+    cmp eax, 16100
+    jl .sr
+    cmp eax, 22600
+    jg .sr
+    mov eax, ecx
+    add eax, 90
+    imul eax, 320
+    mov ebx, edx
+    add ebx, 160
+    add eax, ebx
+    add eax, 0xA0000
+    mov byte [eax], 14
+.sr:
+    inc edx
+    jmp .rx
+.nry:
+    inc ecx
+    jmp .ry
 
-    ; Move cursor to row 6
-    mov ah, 0x02
-    mov bh, 0x00
-    mov dx, 0x0600
-    int 0x10
+    ; Status bar at bottom of VGA
+.taskbar:
+    mov ecx, 190
+.tbar:
+    cmp ecx, 200
+    jge .txt
+    mov eax, ecx
+    imul eax, 320
+    add eax, 0xA0000
+    mov edi, eax
+    mov ebx, 320
+.trow:
+    mov byte [edi], 1
+    inc edi
+    dec ebx
+    jnz .trow
+    inc ecx
+    jmp .tbar
 
-    mov si, prompt
-    mov bl, 0x1E      ; yellow on blue
-    call print_colored
-
-    ; Move cursor to row 8 for blinking cursor
-    mov ah, 0x02
-    mov bh, 0x00
-    mov dx, 0x0800
-    int 0x10
-
-    mov si, cursor_line
-    mov bl, 0x1F
-    call print_colored
-
-blink_loop:
-    ; Show cursor block
-    mov ah, 0x02
-    mov bh, 0x00
-    mov dx, 0x0802
-    int 0x10
-    mov ah, 0x09
-    mov al, 0xDB      ; solid block character
-    mov bh, 0x00
-    mov bl, 0x1F
-    mov cx, 1
-    int 0x10
-
-    ; Delay
-    mov cx, 0xFFFF
-delay1:
-    loop delay1
-    mov cx, 0x8FFF
-delay2:
-    loop delay2
-
-    ; Hide cursor
-    mov ah, 0x02
-    mov bh, 0x00
-    mov dx, 0x0802
-    int 0x10
-    mov ah, 0x09
-    mov al, ' '
-    mov bh, 0x00
-    mov bl, 0x1E
-    mov cx, 1
-    int 0x10
-
-    ; Delay
-    mov cx, 0xFFFF
-delay3:
-    loop delay3
-    mov cx, 0x8FFF
-delay4:
-    loop delay4
-
-    jmp blink_loop
-
-print_colored:
+    ; Write status text in VGA text buffer
+.txt:
+    mov edi, 0xB8000 + (24*80*2)
+    mov esi, status
+    mov ah, 0x1E
+.sl:
     lodsb
     or al, al
-    jz .done
-    mov ah, 0x0E
-    int 0x10
-    jmp print_colored
-.done:
-    ret
+    jz .halt
+    mov [edi], ax
+    add edi, 2
+    jmp .sl
+.halt:
+    cli
+    hlt
 
-title    db '    *** MyOS v1.0 - Built by N4T-dev ***', 0
-welcome  db '    Welcome to MyOS!', 0
-version  db '    Running on x86 CPU | QEMU Virtual Machine', 0
-prompt   db '    This OS was built from scratch in Assembly.', 0
-cursor_line db '    > ', 0
+gdt_start:
+    dq 0x0000000000000000
+    dq 0x00CF9A000000FFFF
+    dq 0x00CF92000000FFFF
+gdt_end:
+gdt_descriptor:
+    dw gdt_end - gdt_start - 1
+    dd gdt_start
+
+status db ' MyOS v1.0 | VGA Graphics | Saturn OS | N4T-dev ', 0
 
 times 510-($-$$) db 0
 dw 0xAA55
